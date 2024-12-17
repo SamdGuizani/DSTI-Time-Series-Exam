@@ -1,0 +1,8 @@
+# large files 
+PLS_2weeks.rds
+
+# folders to exclude
+Archive/
+
+# logs
+.Rhistory
