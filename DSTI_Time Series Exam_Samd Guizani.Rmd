@@ -56,21 +56,21 @@ ggseasonplot(ts_temperature)
 
 #### Notes:
 
--   Power shows a daily and weekly periodic pattern. No obvious trend or possibly a slight decreasing trend. Variance seems constant over time. Unusual zero values (around day 49, i.e. 2/18/2010).
+-   Power shows a daily and weekly periodic pattern. Possibly a slight decreasing trend. Variance seems constant over time. Unusual zero values on day 49 (i.e. 2/18/2010) and unusual peak of power consumption on day 28 (i.e. 1/28/2010).
 
 -   Temperature shows a daily periodic pattern. A possible increasing trend.
 
 ```{r fig.height=4.5, fig.width=8}
 i = 1 + 96 * 0
-n_days = 51
-ts_temporary = ts(data$`Power (kW)`[i:(i+96*n_days-1)], start = 1, freq = 96)
-ggseasonplot(ts_temporary) + xlim(0.75,1)
+n_days = 17
+ts_temporary = ts(data$`Power (kW)`[i:(i+96*n_days-1)], start = 1+(i-1)/96, freq = 96)
+ggseasonplot(ts_temporary) #+ xlim(0.75,1)
 
 ```
 
 #### Notes:
 
--   Power daily pattern is comparable during 6 of the week days, but the 7th day has a specific pattern (earlier decrease during Friday)
+-   Power daily pattern is comparable during 6 of the week days, but the 7th day has a specific pattern (earlier decrease)
 
 ## Replace unusual values by interpolation
 
@@ -101,9 +101,9 @@ plot(decompose(ts(ts_power_impute, frequency = 7*96))) # weekly period
 
 #### Notes:
 
--   Decomposing based on daily period: still a seasonal pattern in the random series (period of 7 days, i.e. weekly) as well as in the trend component.
+-   Decomposing based on **daily** period: still a seasonal pattern in the random series (period of 7 days, i.e. weekly) as well as in the trend component.
 
--   Decomposing based on weekly period: trend component looks smooth with no seasonal pattern. Random component still shows daily pattern (-\> information need to be modeled)
+-   Decomposing based on **weekly** period: trend component looks smooth with no seasonal pattern. Random component still shows daily pattern (-\> information need to be modeled)
 
 ```{r}
 ggtsdisplay(diff(ts_power_impute, lag = 96, differences = 1)) # daily period
@@ -120,13 +120,13 @@ ggtsdisplay(diff(diff(ts_power_impute, lag = 7 * 96, differences = ),
 
 #### Notes:
 
--   Differentiating with a lag of a day period: still observe a weekly seasonal pattern (see time series plot)
+-   Differentiating with a lag = 1 day period: still observe a weekly seasonal pattern (see time series plot)
 
--   Differentiating twice (with a lag of a day period + lag = 1 for de-trending): still observe a weekly seasonal pattern (see time series plot)
+-   Differentiating twice (with a lag = 1 day period + lag = 1 for de-trending): still observe a weekly seasonal pattern (see time series plot)
 
--   Differentiating with a lag of a week period: periodic pattern no longer observed, but a trend is still visible (see time series plot).
+-   Differentiating with a lag = 1 week period: periodic pattern no longer observed, but a trend is still visible (see time series plot).
 
--   Differentiating twice (with a lag of a week period + lag = 1 for de-trending): time series centered on 0, no visible trend. ACF/PACF show significant autocorrelation values (-\> information to be modeled)
+-   Differentiating twice (with a lag = 1 week period + lag = 1 for de-trending): time series centered on 0, no visible trend. ACF/PACF show significant autocorrelation values (-\> information to be modeled)
 
 # Modeling (without covariates)
 
@@ -145,17 +145,21 @@ y_weekly_test = tail(y_weekly, 96)
 ## Holt-Winters, Daily period
 
 ```{r}
-# exec_t_start = Sys.time()
-# 
-# fit = hw(y_daily_train, h=96, seasonal = "additive")
-# fit |>  summary()
-# 
-# ggtsdisplay(fit$residuals)
-# checkresiduals(fit, plot = TRUE)
-# 
-# exec_t_end = Sys.time()
-# print(exec_t_end - exec_t_start)
+exec_t_start = Sys.time()
+
+fit = hw(y_daily_train, h=96, seasonal = "additive")
+fit |>  summary()
+
+ggtsdisplay(fit$residuals)
+checkresiduals(fit, plot = TRUE)
+
+exec_t_end = Sys.time()
+print(exec_t_end - exec_t_start)
 ```
+
+#### Notes:
+
+-   Holt-Winters model fitting fails due to too high frequency (96).
 
 ## SARIMA (auto), Daily period
 
@@ -176,6 +180,14 @@ print(exec_t_end - exec_t_start)
 ```{r}
 # saveRDS(fit, file = "ARIMA_auto_(5,0,0)(0,1,0)[96].rds")
 ```
+
+#### Notes:
+
+-   ACF shows significant autocorrelation at 96 (= 1 day period) and PACF shows exponentially decreasing autocorrelation for daily periods -\> try adding seasonal MA (Q = 1)
+
+-   A trend may still exist -\> try differentiating (d = 1)
+
+-   Some autocorrelation values are significant with the 1st period on ACF and PACF - \> try changing the order p and q
 
 ## SARIMA (manual), Daily period
 
@@ -472,6 +484,6 @@ print(exec_t_end - exec_t_start)
 
 #### Notes:
 
--   PLS: Very long fitting time (approx. 6h). And produces a huge object (+11 GB)
+-   PLS: Very long fitting time (approx. 6h). And produces a huge model object (+11 GB)
 
 -   Train RMSE = 8.41923 (optimal_ncomp = 144)
