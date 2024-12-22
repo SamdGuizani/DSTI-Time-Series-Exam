@@ -33,6 +33,39 @@ library(e1071) # SVM
 library(vars) # VAR model
 ```
 
+# Functions
+
+```{r}
+# Forecast Time Series Using a Machine Learning Model
+
+forecast_ML = function(fit, newdata, h) 
+  #' @description Generates a time series forecast using a machine learning model (e.g., random forest or XGBoost). Iteratively predicts future values based on previous predictions and updates the input data matrix accordingly.
+  #' 
+  #' @param fit A trained machine learning model (e.g., random forest, XGBoost) with a `predict` method.
+  #' 
+  #' @param newdata A matrix of shape (1 x n) used as input to make the initial prediction. The matrix is updated iteratively for subsequent predictions.
+  #' 
+  #' @param h An integer specifying the forecast horizon (number of future steps to predict).
+  #'
+  #' @return
+  #' A numeric vector of length `h` containing the forecasted time series.
+{
+  prev = rep(NULL, h)
+  for (t in 1:h) {
+    prev[t] = predict(fit, newdata = newdata)
+    newdata = matrix(c(newdata[-1], prev[t]), 1)
+  }
+  return(prev)
+}
+
+## Root Mean Squared Error
+
+RMSE = function(y_act, y_prd)
+{
+  return(sqrt(mean((y_act - y_prd)^2)))
+}
+```
+
 # Load data and explore
 
 ## Plot time series and evaluate trends and seasonality patterns
@@ -58,11 +91,11 @@ ggseasonplot(ts_temperature)
 
 -   Power shows a daily and weekly periodic pattern. Possibly a slight decreasing trend. Variance seems constant over time. Unusual zero values on day 49 (i.e. 2/18/2010) and unusual peak of power consumption on day 28 (i.e. 1/28/2010).
 
--   Temperature shows a daily periodic pattern. A possible increasing trend.
+-   Temperature shows a daily periodic pattern and an increasing trend.
 
 ```{r fig.height=4.5, fig.width=8}
 i = 1 + 96 * 0
-n_days = 17
+n_days = 10
 ts_temporary = ts(data$`Power (kW)`[i:(i+96*n_days-1)], start = 1+(i-1)/96, freq = 96)
 ggseasonplot(ts_temporary) #+ xlim(0.75,1)
 
@@ -70,7 +103,7 @@ ggseasonplot(ts_temporary) #+ xlim(0.75,1)
 
 #### Notes:
 
--   Power daily pattern is comparable during 6 of the week days, but the 7th day has a specific pattern (earlier decrease)
+-   Power daily pattern is comparable during 6 of the week days, but the 7th day has a specific pattern (earlier decrease on 01/03/2010, 01/10/2010, 01/17/2010, etc...)
 
 ## Replace unusual values by interpolation
 
@@ -134,27 +167,27 @@ ggtsdisplay(diff(diff(ts_power_impute, lag = 7 * 96, differences = ),
 # Converting ts_power_impute to daily period
 y_daily = ts(ts_power_impute, frequency = 96)
 y_daily_train = head(y_daily, length(y_daily) - 96)
-y_daily_test = tail(y_daily, 96)
+y_daily_test = tail(y_daily, 96) # last day kept as test set
 
 # Converting ts_power_impute to weekly period
 y_weekly = ts(ts_power_impute, frequency = 7*96)
-y_weekly_train = head(y_weekly, length(y_daily) - 96)
-y_weekly_test = tail(y_weekly, 96)
+y_weekly_train = head(y_weekly, length(y_weekly) - 96)
+y_weekly_test = tail(y_weekly, 96) # last day kept as test set
 ```
 
 ## Holt-Winters, Daily period
 
 ```{r}
-exec_t_start = Sys.time()
-
-fit = hw(y_daily_train, h=96, seasonal = "additive")
-fit |>  summary()
-
-ggtsdisplay(fit$residuals)
-checkresiduals(fit, plot = TRUE)
-
-exec_t_end = Sys.time()
-print(exec_t_end - exec_t_start)
+# exec_t_start = Sys.time()
+# 
+# fit = hw(y_daily_train, h=96, seasonal = "additive")
+# fit |>  summary()
+# 
+# ggtsdisplay(fit$residuals)
+# checkresiduals(fit, plot = TRUE)
+# 
+# exec_t_end = Sys.time()
+# print(exec_t_end - exec_t_start)
 ```
 
 #### Notes:
@@ -164,7 +197,7 @@ print(exec_t_end - exec_t_start)
 ## SARIMA (auto), Daily period
 
 ```{r}
-# Auto ARIMA, daily period
+# Auto SARIMA, daily period
 exec_t_start = Sys.time()
 
 fit = auto.arima(y_daily_train)
@@ -187,12 +220,12 @@ print(exec_t_end - exec_t_start)
 
 -   A trend may still exist -\> try differentiating (d = 1)
 
--   Some autocorrelation values are significant with the 1st period on ACF and PACF - \> try changing the order p and q
+-   Some autocorrelation values are significant within the 1st period on ACF and PACF - \> try changing the order p and q
 
 ## SARIMA (manual), Daily period
 
 ```{r}
-# ARIMA, daily period
+# SARIMA, daily period
 exec_t_start = Sys.time()
 
 fit = Arima(y_daily_train, order = c(5,1,5), seasonal = c(0,1,1))
@@ -253,10 +286,10 @@ print(exec_t_end - exec_t_start)
 ## SARIMA (manual), Weekly period
 
 ```{r}
-# ARIMA, weekly period
+# # ARIMA, weekly period
 # exec_t_start = Sys.time()
 # 
-# fit = Arima(y_weekly_train, order = c(5,1,2), seasonal = c(1,1,0))
+# fit = Arima(y_weekly_train, order = c(5,1,2), seasonal = c(0,1,1))
 # fit |>  summary()
 # 
 # ggtsdisplay(fit$residuals)
@@ -267,7 +300,7 @@ print(exec_t_end - exec_t_start)
 ```
 
 ```{r}
-# saveRDS(fit, file = "ARIMA_auto_(5,1,2)(1,1,0)[672].rds")
+# saveRDS(fit, file = "ARIMA_auto_(5,1,2)(0,1,1)[672].rds")
 ```
 
 ## NetAR, Weekly period
@@ -487,3 +520,110 @@ print(exec_t_end - exec_t_start)
 -   PLS: Very long fitting time (approx. 6h). And produces a huge model object (+11 GB)
 
 -   Train RMSE = 8.41923 (optimal_ncomp = 144)
+
+## Model performance comparison on test set
+
+### Models based on daily period
+
+```{r}
+# Build a list of models
+models_list = list()
+models_list$SARIMA_500_010_96 = readRDS('ARIMA_auto_(5,0,0)(0,1,0)[96].rds')
+models_list$SARIMA_515_010_96 = readRDS('ARIMA_man_(5,1,5)(0,1,1)[96].rds')
+models_list$NNetAR_daily = readRDS('NNetAR_daily.rds')
+models_list$RF_daily = readRDS('RF_daily.rds')
+models_list$XGBoots_daily = readRDS('XGBoost_daily.rds')
+
+# Make predictions with each model and store RMSE
+previsions_list = list()
+rmsep_list = list()
+horizon = 96
+newdata_ML = tail(y_daily_train, horizon)
+
+for (name in names(models_list))
+{
+  cat(paste0("Forcasting model:", name, "\n"))
+        
+  if(grepl("RF", name) | grepl("XG", name)) # Test if model is a ML model 
+  {
+    prevision = forecast_ML(models_list[[name]], newdata = matrix(newdata_ML,1), horizon)
+    prevision = ts(prevision, start = c(50,92), frequency = 96)
+  }
+  else
+  {
+    prevision = forecast(models_list[[name]], h = horizon)
+    prevision = prevision$mean
+  }
+  previsions_list[[name]] = prevision
+  rmsep_list[[name]] = RMSE(y_daily_test,prevision)
+  
+  cat(paste0("Test set RMSE: ", rmsep_list[[name]], "\n\n"))
+}
+
+# Plots
+autoplot(y_daily_test) +
+  autolayer(previsions_list$SARIMA_500_010_96) +
+  autolayer(previsions_list$SARIMA_515_010_96) +
+  autolayer(previsions_list$NNetAR_daily) + 
+  autolayer(previsions_list$RF_daily) +
+  autolayer(previsions_list$XGBoots_daily)
+```
+
+### Models based on weekly period
+
+```{r}
+# Build a list of models
+models_list = list()
+models_list$SARIMA_512_010_672 = readRDS('ARIMA_auto_(5,1,2)(0,1,0)[672].rds')
+models_list$NNetAR_weekly = readRDS('NNetAR_weekly.rds')
+models_list$RF_weekly = readRDS('RF_weekly.rds')
+models_list$XGBoots_weekly = readRDS('XGBoost_weeky.rds')
+
+# Make predictions with each model and store RMSE
+previsions_list = list()
+rmsep_list = list()
+horizon = 96
+newdata_ML = tail(y_weekly_train, 7*horizon)
+
+for (name in names(models_list))
+{
+  cat(paste0("Forcasting model:", name, "\n"))
+        
+  if(grepl("RF", name) | grepl("XG", name)) # Test if model is a ML model 
+  {
+    prevision = forecast_ML(models_list[[name]], newdata = matrix(newdata_ML,1), horizon)
+    prevision = ts(prevision, start = c(8,92), frequency = 7*96)
+  }
+  else
+  {
+    prevision = forecast(models_list[[name]], h = horizon)
+    prevision = prevision$mean
+  }
+  previsions_list[[name]] = prevision
+  rmsep_list[[name]] = RMSE(y_weekly_test,prevision)
+  
+  cat(paste0("Test set RMSE: ", rmsep_list[[name]], "\n\n"))
+}
+
+# Plots
+autoplot(y_weekly_test) +
+  autolayer(previsions_list$SARIMA_512_010_672) +
+  autolayer(previsions_list$NNetAR_weekly) + 
+  autolayer(previsions_list$RF_weekly) +
+  autolayer(previsions_list$XGBoots_weekly)
+```
+
+```{r}
+fit = readRDS("PLS_2weeks.rds")
+
+cat(paste0("Forcasting model:", "PLS_2weeks", "\n"))
+
+prevision = predict(fit, newdata = t(as.data.frame(tail(y_weekly_train, 2*7*96))), ncomp = 144)
+prevision = ts(prevision[1,,1], start = c(8,92), frequency = 7*96)
+
+RMSE_PLS_2weeks = RMSE(y_weekly_test,prevision)
+cat(paste0("Test set RMSE: ", RMSE_PLS_2weeks, "\n\n"))
+
+autoplot(y_weekly_test) +
+  autolayer(prevision)
+```
