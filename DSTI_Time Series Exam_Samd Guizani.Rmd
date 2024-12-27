@@ -2,7 +2,11 @@
 title: "Time Series - EXAM"
 author: "Samd Guizani"
 date: "`r Sys.Date()`"
-output: word_document
+output:
+  html_document:
+    df_print: paged
+  word_document: default
+  pdf_document: default
 ---
 
 # Assignment
@@ -61,6 +65,12 @@ forecast_ML = function(fit, newdata, h)
 ## Root Mean Squared Error
 
 RMSE = function(y_act, y_prd)
+  #' Computes Root Mean Squared Error (RMSE) between actual and predicted values. 
+  #'
+  #' @param y_act Numeric vector. Actual observed values.
+  #' @param y_prd Numeric vector. Predicted values.
+  #'
+  #' @return A single numeric value representing RMSE.
 {
   return(sqrt(mean((y_act - y_prd)^2)))
 }
@@ -75,14 +85,14 @@ data = read_excel('2023-11-Elec-train.xlsx')
 data$Timestamp <- as.POSIXct(data[[1]], format = "%m/%d/%Y %H:%M")
 data$Timestamp[1] <- as.POSIXct("1/1/2010 1:15", format = "%m/%d/%Y %H:%M") # fix import issue with 1st timestamp.
 
-ts_power = ts(data$`Power (kW)`[1:(dim(data)[1] - 96)], start = 1, freq = 96) # last 96 obs are NA, to be forecasted
+ts_power = ts(data$`Power (kW)`[1:(dim(data)[1] - 96)], start = c(1,6), freq = 96) # last 96 obs are NA, to be forecasted
 
 autoplot(ts_power)
-autoplot(ts_power) + xlim(c(45, 50)) # focus on unusual data 
+autoplot(ts_power) + xlim(c(45, 52)) # focus on unusual data 
 ggseasonplot(ts_power) # seasonal plot with daily period
-ggseasonplot(ts(ts_power, freq = 7 * 96)) # seasonal plot with weekly period
+ggseasonplot(ts(ts_power, freq = 7 * 96, start = c(1,6))) # seasonal plot with weekly period
 
-ts_temperature = ts(data$`Temp (C°)`, start = 1, freq = 96)
+ts_temperature = ts(data$`Temp (C°)`, start = c(1,6), freq = 96)
 autoplot(ts_temperature)
 ggseasonplot(ts_temperature)
 ```
@@ -94,9 +104,8 @@ ggseasonplot(ts_temperature)
 -   Temperature shows a daily periodic pattern and an increasing trend.
 
 ```{r fig.height=4.5, fig.width=8}
-i = 1 + 96 * 0
 n_days = 10
-ts_temporary = ts(data$`Power (kW)`[i:(i+96*n_days-1)], start = 1+(i-1)/96, freq = 96)
+ts_temporary = ts(data$`Power (kW)`[1:(96*n_days)], start = c(1,6), freq = 96)
 ggseasonplot(ts_temporary) #+ xlim(0.75,1)
 
 ```
@@ -116,7 +125,7 @@ ts_power_impute = imputeTS::na_interpolation(ts_power_impute, option = 'linear')
 
 autoplot(ts_power) + 
   autolayer(ts_power_impute) +
-  xlim(c(45, 50))
+  xlim(c(45, 52))
 
 ts_power_impute[loc_0s]
 ```
@@ -161,16 +170,16 @@ ggtsdisplay(diff(diff(ts_power_impute, lag = 7 * 96, differences = ),
 
 -   Differentiating twice (with a lag = 1 week period + lag = 1 for de-trending): time series centered on 0, no visible trend. ACF/PACF show significant autocorrelation values (-\> information to be modeled)
 
-# Modeling (without covariates)
+# Modeling, without co-variates
 
 ```{r}
 # Converting ts_power_impute to daily period
-y_daily = ts(ts_power_impute, frequency = 96)
+y_daily = ts(ts_power_impute, start = c(1,6), frequency = 96)
 y_daily_train = head(y_daily, length(y_daily) - 96)
 y_daily_test = tail(y_daily, 96) # last day kept as test set
 
 # Converting ts_power_impute to weekly period
-y_weekly = ts(ts_power_impute, frequency = 7*96)
+y_weekly = ts(ts_power_impute, start = c(1,6), frequency = 7*96)
 y_weekly_train = head(y_weekly, length(y_weekly) - 96)
 y_weekly_test = tail(y_weekly, 96) # last day kept as test set
 ```
@@ -178,6 +187,8 @@ y_weekly_test = tail(y_weekly, 96) # last day kept as test set
 ## Holt-Winters, Daily period
 
 ```{r}
+# Code commented: Holt-Winters model failed to be fitted due to too large number of lags per period (96).
+
 # exec_t_start = Sys.time()
 # 
 # fit = hw(y_daily_train, h=96, seasonal = "additive")
@@ -218,9 +229,40 @@ print(exec_t_end - exec_t_start)
 
 -   ACF shows significant autocorrelation at 96 (= 1 day period) and PACF shows exponentially decreasing autocorrelation for daily periods -\> try adding seasonal MA (Q = 1)
 
--   A trend may still exist -\> try differentiating (d = 1)
+-   A trend may still exist -\> try differentiating (d = 1) ???
 
--   Some autocorrelation values are significant within the 1st period on ACF and PACF - \> try changing the order p and q
+-   Some autocorrelation values are significant within the 1st period on ACF and PACF - \> try changing the order p and q ???
+
+```{r}
+# Code commented: very long computation 
+
+# # Forcasting function to cross-validate
+# Arima_ <- function(x, h) {
+#   forecast(Arima(x,
+#                  order=c(5,0,0),
+#                  seasonal = c(0,1,0)
+#                  ))
+# }
+# 
+# # Crossvalidation execution
+# exec_t_start = Sys.time()
+# 
+# e <- tsCV(y_daily, Arima_, h=96, window = 4795)
+# 
+# exec_t_end = Sys.time()
+# print(exec_t_end - exec_t_start)
+# 
+# print(paste0("Cross-validation RMSE: ", sqrt(mean(e^2, na.rm = TRUE))))
+```
+
+#### Notes:
+
+Cross-validation:
+
+```         
+Time difference of 47.4164 mins 
+[1] "Cross-validation RMSE: 6.38355803349186"
+```
 
 ## SARIMA (manual), Daily period
 
@@ -228,7 +270,7 @@ print(exec_t_end - exec_t_start)
 # SARIMA, daily period
 exec_t_start = Sys.time()
 
-fit = Arima(y_daily_train, order = c(5,1,5), seasonal = c(0,1,1))
+fit = Arima(y_daily_train, order = c(5,0,0), seasonal = c(0,1,1))
 fit |>  summary()
 
 ggtsdisplay(fit$residuals)
@@ -239,8 +281,38 @@ print(exec_t_end - exec_t_start)
 ```
 
 ```{r}
-# saveRDS(fit, file = "ARIMA_man_(5,1,5)(0,1,1)[96].rds")
+# saveRDS(fit, file = "ARIMA_man_(5,0,0)(0,1,1)[96].rds")
 ```
+
+```{r}
+# Code commented: very long computation 
+
+# # Cross validation using tsCV(), ref: https://pkg.robjhyndman.com/forecast/reference/tsCV.html
+# 
+# # Forcasting function to cross-validate
+# Arima_ <- function(x, h) {
+#   forecast(Arima(x,
+#                  order=c(5,0,0),
+#                  seasonal = c(0,1,1)
+#                  ))
+# }
+# 
+# # Crossvalidation execution
+# exec_t_start = Sys.time()
+# 
+# e <- tsCV(y_daily, Arima_, h=96, window = 4795)
+# 
+# exec_t_end = Sys.time()
+# print(exec_t_end - exec_t_start)
+# 
+# print(paste0("Cross-validation RMSE: ", sqrt(mean(e^2, na.rm = TRUE))))
+```
+
+#### Notes:
+
+Cross-validation:
+
+`Time difference of 5.734455 hours [1] "Cross-validation RMSE: 12.5587524976877"`
 
 ## NNetAR, Daily period
 
@@ -266,17 +338,19 @@ print(exec_t_end - exec_t_start)
 ## SARIMA (auto), Weekly period
 
 ```{r}
-# Auto ARIMA, weekly period
-exec_t_start = Sys.time()
+# Code commented: long fitting time, model performance not great
 
-fit = auto.arima(y_weekly_train)
-fit |>  summary()
-
-ggtsdisplay(fit$residuals)
-checkresiduals(fit, plot = TRUE)
-
-exec_t_end = Sys.time()
-print(exec_t_end - exec_t_start)
+# # Auto ARIMA, weekly period
+# exec_t_start = Sys.time()
+# 
+# fit = auto.arima(y_weekly_train)
+# fit |>  summary()
+# 
+# ggtsdisplay(fit$residuals)
+# checkresiduals(fit, plot = TRUE)
+# 
+# exec_t_end = Sys.time()
+# print(exec_t_end - exec_t_start)
 ```
 
 ```{r}
@@ -286,6 +360,8 @@ print(exec_t_end - exec_t_start)
 ## SARIMA (manual), Weekly period
 
 ```{r}
+# Code commented: fail to be fitted due to too large number of lags
+
 # # ARIMA, weekly period
 # exec_t_start = Sys.time()
 # 
@@ -324,56 +400,6 @@ print(exec_t_end - exec_t_start)
 # saveRDS(fit, file = "NNetAR_weekly.rds")
 ```
 
-```{r}
-
-# x = co2
-# 
-# forecastfunction = function(x, h){forecast(Arima(x, order=c(1,0,0)), h=h)}
-# 
-# e = tsCV(co2, forecastfunction, h = 12, window = 5, xreg = NULL, initial = 150)
-
-
-
-# #Fit an AR(2) model to each rolling origin subset
-# far2 <- function(x, h){forecast(Arima(x, order=c(2,0,0)), h=h)}
-# e <- tsCV(lynx, far2, h=1)
-# 
-# #Fit the same model with a rolling window of length 30
-# e <- tsCV(lynx, far2, h=1, window=30)
-# 
-# #Example with exogenous predictors
-# far2_xreg <- function(x, h, xreg, newxreg) {
-#   forecast(Arima(x, order=c(2,0,0), xreg=xreg), xreg=newxreg)
-# }
-# 
-# y <- ts(rnorm(50))
-# xreg <- matrix(rnorm(100),ncol=2)
-# e <- tsCV(y, far2_xreg, h=3, xreg=xreg)
-
-
-```
-
-```{r}
-# autoplot(window(fit$fitted, start = 30)) + autolayer(window(ts_power_impute, start = 30))
-```
-
-```{r}
-# exec_t_start = Sys.time()
-# 
-# forecastfunc = function(x, h)
-# {
-#   forecast(Arima(x, order=c(0,1,0), seasonal=c(0,1,0)),
-#            h=h,
-#            window = 2 * 96 * 7, # condider 2 weeks history to build a model
-#            initial = 3000) 
-# }
-# 
-# e = tsCV(y_daily_train, forecastfunc, h=96)
-# 
-# exec_t_end = Sys.time()
-# print(exec_t_end - exec_t_start)
-```
-
 ## ML data prep
 
 ```{r}
@@ -407,7 +433,7 @@ exec_t_start = Sys.time()
 fit = randomForest(x = df_daily[,-(96+1)], y = df_daily[, (96+1)])
 fit |>  summary()
 
-e = ts(fit$y - fit$predicted, start = c(1,1), frequency = 96)
+e = ts(fit$y - fit$predicted, start = c(1,6), frequency = 96)
 print(paste0("Train RMSE: ", sqrt(mean(e^2, na.rm = TRUE))))
 ggtsdisplay(e)
 checkresiduals(e, plot = TRUE)
@@ -430,7 +456,7 @@ fit = xgboost(data = df_daily[,-(96+1)], label = df_daily[, (96+1)],
               objective = "reg:squarederror")
 fit |>  summary()
 
-e = ts(df_daily[, (96+1)] - predict(fit, newdata = df_daily[,-(96+1)]), start = c(1,1), frequency = 96)
+e = ts(df_daily[, (96+1)] - predict(fit, newdata = df_daily[,-(96+1)]), start = c(1,6), frequency = 96)
 print(paste0("Train RMSE: ", sqrt(mean(e^2, na.rm = TRUE))))
 ggtsdisplay(e)
 checkresiduals(e, plot = TRUE)
@@ -449,7 +475,7 @@ exec_t_start = Sys.time()
 fit = randomForest(x = df_weekly[,-(7*96+1)], y = df_weekly[, (7*96+1)])
 fit |>  summary()
 
-e = ts(fit$y - fit$predicted, start = c(1,1), frequency = 96)
+e = ts(fit$y - fit$predicted, start = c(1,6), frequency = 96)
 print(paste0("Train RMSE: ", sqrt(mean(e^2, na.rm = TRUE))))
 ggtsdisplay(e)
 checkresiduals(e, plot = TRUE)
@@ -472,7 +498,7 @@ fit = xgboost(data = df_weekly[,-(7*96+1)], label = df_weekly[, (7*96+1)],
               objective = "reg:squarederror")
 fit |>  summary()
 
-e = ts(df_weekly[, (7*96+1)] - predict(fit, newdata = df_weekly[,-(7*96+1)]), start = c(1,1), frequency = 96)
+e = ts(df_weekly[, (7*96+1)] - predict(fit, newdata = df_weekly[,-(7*96+1)]), start = c(1,6), frequency = 96)
 print(paste0("Train RMSE: ", sqrt(mean(e^2, na.rm = TRUE))))
 ggtsdisplay(e)
 checkresiduals(e, plot = TRUE)
@@ -490,29 +516,31 @@ library(pls)
 ```
 
 ```{r}
-exec_t_start = Sys.time()
+# Code commented: very long model fitting, model performance not great 
 
-fit = plsr(df_2weeks[,(2*7*96+1):(2*7*96+96)] ~ df_2weeks[,1:(2*7*96)],
-           scale = TRUE,
-           validation = "CV")
-fit |>  summary()
-
-# Cross-validation results
-validation_mse <- fit$validation$PRESS
-avg_mse <- colMeans(validation_mse)
-
-# Optimal components minimizing average MSE
-optimal_ncomp <- which.min(avg_mse)
-
-e = fit$residuals[,,optimal_ncomp]
-print(paste0("Train RMSE: ", sqrt(mean(e^2, na.rm = TRUE))))
-# ggtsdisplay(e)
-# checkresiduals(e, plot = TRUE)
-
-exec_t_end = Sys.time()
-print(exec_t_end - exec_t_start)
-
-# saveRDS(fit, file = "PLS_2weeks.rds")
+# exec_t_start = Sys.time()
+# 
+# fit = plsr(df_2weeks[,(2*7*96+1):(2*7*96+96)] ~ df_2weeks[,1:(2*7*96)],
+#            scale = TRUE,
+#            validation = "CV")
+# fit |>  summary()
+# 
+# # Cross-validation results
+# validation_mse <- fit$validation$PRESS
+# avg_mse <- colMeans(validation_mse)
+# 
+# # Optimal components minimizing average MSE
+# optimal_ncomp <- which.min(avg_mse)
+# 
+# e = fit$residuals[,,optimal_ncomp]
+# print(paste0("Train RMSE: ", sqrt(mean(e^2, na.rm = TRUE))))
+# # ggtsdisplay(e)
+# # checkresiduals(e, plot = TRUE)
+# 
+# exec_t_end = Sys.time()
+# print(exec_t_end - exec_t_start)
+# 
+# # saveRDS(fit, file = "PLS_2weeks.rds")
 ```
 
 #### Notes:
@@ -529,7 +557,8 @@ print(exec_t_end - exec_t_start)
 # Build a list of models
 models_list = list()
 models_list$SARIMA_500_010_96 = readRDS('ARIMA_auto_(5,0,0)(0,1,0)[96].rds')
-models_list$SARIMA_515_010_96 = readRDS('ARIMA_man_(5,1,5)(0,1,1)[96].rds')
+models_list$SARIMA_500_011_96 = readRDS('ARIMA_man_(5,0,0)(0,1,1)[96].rds')
+models_list$SARIMA_1100_011_96 = readRDS('ARIMA_man_(11,0,0)(0,1,1)[96].rds')
 models_list$NNetAR_daily = readRDS('NNetAR_daily.rds')
 models_list$RF_daily = readRDS('RF_daily.rds')
 models_list$XGBoots_daily = readRDS('XGBoost_daily.rds')
@@ -544,12 +573,13 @@ for (name in names(models_list))
 {
   cat(paste0("Forcasting model:", name, "\n"))
         
-  if(grepl("RF", name) | grepl("XG", name)) # Test if model is a ML model 
+  if(grepl("RF", name) 
+     | grepl("XG", name)) # Use forecast_ML function with ML models 
   {
     prevision = forecast_ML(models_list[[name]], newdata = matrix(newdata_ML,1), horizon)
-    prevision = ts(prevision, start = c(50,92), frequency = 96)
+    prevision = ts(prevision, start = c(51,1), frequency = 96)
   }
-  else
+  else # Use forecast function with ts models
   {
     prevision = forecast(models_list[[name]], h = horizon)
     prevision = prevision$mean
@@ -563,7 +593,8 @@ for (name in names(models_list))
 # Plots
 autoplot(y_daily_test) +
   autolayer(previsions_list$SARIMA_500_010_96) +
-  autolayer(previsions_list$SARIMA_515_010_96) +
+  autolayer(previsions_list$SARIMA_500_011_96) +
+  autolayer(previsions_list$SARIMA_1100_011_96) +
   autolayer(previsions_list$NNetAR_daily) + 
   autolayer(previsions_list$RF_daily) +
   autolayer(previsions_list$XGBoots_daily)
@@ -589,12 +620,13 @@ for (name in names(models_list))
 {
   cat(paste0("Forcasting model:", name, "\n"))
         
-  if(grepl("RF", name) | grepl("XG", name)) # Test if model is a ML model 
+  if(grepl("RF", name) 
+     | grepl("XG", name)) # Use forecast_ML function with ML models
   {
     prevision = forecast_ML(models_list[[name]], newdata = matrix(newdata_ML,1), horizon)
-    prevision = ts(prevision, start = c(8,92), frequency = 7*96)
+    prevision = ts(prevision, start = c(8,97), frequency = 7*96)
   }
-  else
+  else # Use forecast function with ts models
   {
     prevision = forecast(models_list[[name]], h = horizon)
     prevision = prevision$mean
@@ -614,16 +646,226 @@ autoplot(y_weekly_test) +
 ```
 
 ```{r}
-fit = readRDS("PLS_2weeks.rds")
+# Code commented: issue with prediction 
 
-cat(paste0("Forcasting model:", "PLS_2weeks", "\n"))
+# fit = readRDS("PLS_2weeks.rds")
+# 
+# cat(paste0("Forcasting model:", "PLS_2weeks", "\n"))
+# 
+# prevision = predict(fit, 
+#                     newdata = t(matrix(tail(y_weekly_train, 2*7*96), nrow = 1)), 
+#                     ncomp = 144)
+# prevision = ts(prevision[1,,1], start = c(8,97), frequency = 7*96)
+# 
+# RMSE_PLS_2weeks = RMSE(y_weekly_test,prevision)
+# cat(paste0("Test set RMSE: ", RMSE_PLS_2weeks, "\n\n"))
+# 
+# autoplot(y_weekly_test) +
+#   autolayer(prevision)
+```
 
-prevision = predict(fit, newdata = t(as.data.frame(tail(y_weekly_train, 2*7*96))), ncomp = 144)
-prevision = ts(prevision[1,,1], start = c(8,92), frequency = 7*96)
+## Retrain model on full Power time series and forecast unknown next 96 observations
 
-RMSE_PLS_2weeks = RMSE(y_weekly_test,prevision)
-cat(paste0("Test set RMSE: ", RMSE_PLS_2weeks, "\n\n"))
+```{r}
+# next observation based on last day
+df_daily = as.vector(y_daily)[1:(96+1)]
+for (i in 1:(length(y_daily)-(96+1)))
+{
+  df_daily = rbind(df_daily, as.vector(y_daily)[(i+1):(i+96+1)])
+}
+```
 
-autoplot(y_weekly_test) +
+```{r}
+# train model
+exec_t_start = Sys.time()
+
+fit = randomForest(x = df_daily[,-(96+1)], y = df_daily[, (96+1)])
+fit |>  summary()
+
+e = ts(fit$y - fit$predicted, start = c(1,6), frequency = 96)
+print(paste0("Train RMSE: ", sqrt(mean(e^2, na.rm = TRUE))))
+ggtsdisplay(e)
+checkresiduals(e, plot = TRUE)
+
+exec_t_end = Sys.time()
+print(exec_t_end - exec_t_start)
+
+saveRDS(fit, file = "Final_model_without_covariate_RF_daily.rds")
+```
+
+```{r}
+# forecast 96 next values
+horizon = 96
+newdata_ML = tail(y_daily, horizon)
+
+prevision = ts(forecast_ML(fit, newdata = matrix(newdata_ML,1), horizon), 
+               start = c(52,1), frequency = 96)
+
+df_results = data.frame(Forecast_no_covariate = prevision)
+```
+
+```{r}
+# Plots
+autoplot(y_daily) +
+  autolayer(prevision) +
+  xlim(c(35,53))
+```
+
+# Modeling, with co-variates
+
+## Correlation power vs. temperature
+
+```{r}
+plot(data$`Temp (C°)`, data$`Power (kW)`)
+abline(lm(data$`Power (kW)`~data$`Temp (C°)`), col="red")
+
+# replace "zero" values
+data_impute = data
+data_impute[1:length(ts_power_impute), 2] = ts_power_impute
+
+print(paste0("Correlation coef. Power vs. Temp = ", cor(data_impute$`Power (kW)`, data_impute$`Temp (C°)`, use = "complete.obs")))
+
+# Plots
+plot(data_impute$`Temp (C°)`, data_impute$`Power (kW)`)
+abline(lm(data_impute$`Power (kW)`~data_impute$`Temp (C°)`), col="red")
+
+# Set up the layout for 2 rows and 1 column
+par(mfrow = c(2, 1), mar = c(0, 4, 2, 2), oma = c(4, 0, 0, 0)) 
+
+# Plot the first time series
+ts.plot(data_impute$`Power (kW)`, xlab = "", ylab = "Power")
+
+# Plot the second time series
+par(mar = c(0, 4, 2, 2))  # Adjust margins for the second plot
+ts.plot(data_impute$`Temp (C°)`, xlab = "", ylab = "Temperature")
+
+# Reset layout
+par(mfrow = c(1, 1))
+```
+
+#### Notes:
+
+-   A correlation exists between Power and Temperature (higher Power is observed when Temperature increases).
+
+## Data preparation
+
+```{r}
+# Convert to time series, daily period
+data_impute = ts(data_impute[,2:3], start = c(1,6), frequency = 96)
+
+# Split into train, test and forecast sets
+data_train = window(data_impute, end = c(50,96))
+data_test = window(data_impute, start = c(51,1), end = c(51,96))
+data_forecast = window(data_impute, start = c(52,1))
+```
+
+## Dynamic Regression
+
+### Auto-ARIMA with covariate
+
+```{r}
+# Auto SARIMA, daily period, with covariate
+exec_t_start = Sys.time()
+
+fit = auto.arima(data_train[,1], xreg = data_train[,2])
+fit |>  summary()
+
+ggtsdisplay(fit$residuals)
+checkresiduals(fit, plot = TRUE)
+
+exec_t_end = Sys.time()
+print(exec_t_end - exec_t_start)
+
+# Prediction on test set
+prevision = forecast(fit, h = 96, xreg = data_test[,2])$mean
+cat(paste0("Test RMSE: ", RMSE(data_test[,1], prevision)))
+autoplot(data_test[,1]) +
   autolayer(prevision)
 ```
+
+```{r}
+# saveRDS(fit, file = "ARIMA_X_auto_(5,0,0)(0,1,0)[96].rds")
+```
+
+#### Notes:
+
+-   ACF shows significant autocorrelation at 96 (= 1 day period) and PACF shows exponentially decreasing autocorrelation for daily periods -\> try adding seasonal MA (Q = 1)
+
+### Investigate linear modeling using `tslm()`
+
+```{r}
+exec_t_start = Sys.time()
+
+fit = tslm(data_train[,1] ~ data_train[,2] + trend + season, data = data_train)
+fit |> summary()
+
+ggtsdisplay(fit$residuals)
+checkresiduals(fit, plot = TRUE)
+
+exec_t_end = Sys.time()
+print(exec_t_end - exec_t_start)
+```
+
+### Fit manually ARIMA with covariate
+
+```{r}
+# Auto SARIMA, daily period
+exec_t_start = Sys.time()
+
+fit = Arima(data_train[,1], xreg = data_train[,-1], 
+            order = c(5,0,0), 
+            seasonal = c(0,1,1))
+fit |>  summary()
+
+ggtsdisplay(fit$residuals)
+checkresiduals(fit, plot = TRUE)
+
+exec_t_end = Sys.time()
+print(exec_t_end - exec_t_start)
+
+# Prediction on test set
+prevision = forecast(fit, h = 96, xreg = data_test[,2])$mean
+cat(paste0("Test RMSE: ", RMSE(data_test[,1], prevision)))
+autoplot(data_test[,1]) +
+  autolayer(prevision)
+```
+
+```{r}
+# saveRDS(fit, file = "ARIMA_X_auto_(5,0,0)(0,1,1)[96].rds")
+```
+
+```{r}
+# Code commented: very long computation 
+
+# # Cross validation using tsCV(), ref: https://pkg.robjhyndman.com/forecast/reference/tsCV.html
+# 
+# # Forcasting function to cross-validate
+# Arima_xreg <- function(x, h, xreg, newxreg) {
+#   forecast(Arima(x, 
+#                  order=c(5,0,0), 
+#                  seasonal = c(0,1,0), 
+#                  xreg=xreg), 
+#            xreg=newxreg)
+# }
+# 
+# # Crossvalidation execution
+# exec_t_start = Sys.time()
+# 
+# e <- tsCV(data_impute[,1], Arima_xreg, h=96, xreg=data_impute[,2], window = 4795)
+# 
+# exec_t_end = Sys.time()
+# print(exec_t_end - exec_t_start)
+# 
+# print(paste0("Cross-validation RMSE: ", sqrt(mean(e^2, na.rm = TRUE))))
+```
+
+#### Notes:
+
+-   Cross validation:
+
+    `Arima_xreg <- function(x, h, xreg, newxreg) { forecast(Arima(x, order=c(5,0,0), seasonal = c(0,1,0), xreg=xreg), xreg=newxreg) }`\
+    `e <- tsCV(data_impute[,1], Arima_xreg, h=96, xreg=data_impute[,2], window = 4795)exec_t_end = Sys.time() print(exec_t_end - exec_t_start)print(paste0("Cross-validation RMSE: ", sqrt(mean(e^2, na.rm = TRUE))))`
+
+-   Results:\
+    Time difference of 3.731499 hours\
+    [1] "Cross-validation RMSE: 6.5453262433807"
