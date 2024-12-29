@@ -24,7 +24,7 @@ output:
 # Working directory and imports
 
 ```{r}
-setwd("~/DSTI_MSc DS and AI/02-Foundation/06-Time Series/Exam")
+setwd("~/DSTI_MSc DS and AI/03-Advanced/03-Time Series/Course_R scripts")
 
 library(readxl)
 library(forecast)
@@ -35,12 +35,13 @@ library(randomForest)
 library(xgboost)
 library(e1071) # SVM
 library(vars) # VAR model
+library(writexl)
 ```
 
 # Functions
 
 ```{r}
-# Forecast Time Series Using a Machine Learning Model
+## Forecast Time Series Using a Machine Learning Model
 
 forecast_ML = function(fit, newdata, h) 
   #' @description Generates a time series forecast using a machine learning model (e.g., random forest or XGBoost). Iteratively predicts future values based on previous predictions and updates the input data matrix accordingly.
@@ -51,8 +52,7 @@ forecast_ML = function(fit, newdata, h)
   #' 
   #' @param h An integer specifying the forecast horizon (number of future steps to predict).
   #'
-  #' @return
-  #' A numeric vector of length `h` containing the forecasted time series.
+  #' @return A numeric vector of length `h` containing the forecasted time series.
 {
   prev = rep(NULL, h)
   for (t in 1:h) {
@@ -62,17 +62,50 @@ forecast_ML = function(fit, newdata, h)
   return(prev)
 }
 
+
+## Forecast Time Series Using a Machine Learning Model and covariates
+
+forecast_ML_X = function(fit, newdata, h, xreg) 
+  #' @description Generates a time series forecast using a machine learning model (e.g., random forest or XGBoost). Iteratively predicts future values based on previous predictions and measured covariates and updates the input data matrix accordingly.
+  #' 
+  #' @param fit A trained machine learning model (e.g., random forest, XGBoost) with a `predict` method.
+  #' 
+  #' @param newdata A matrix of shape (1 x n) used as input to make the initial prediction. The matrix is updated iteratively for subsequent predictions.
+  #' 
+  #' @param h An integer specifying the forecast horizon (number of future steps to predict).
+  #' 
+  #' @param xreg A matrix containing the observed covariates to be used for the prediction.
+  #'
+  #' @return A numeric vector of length `h` containing the forecasted time series.
+{
+  newdata = matrix(c(newdata, xreg[1]), 1)
+  
+  prev = rep(NULL, h)
+  prev[1] = predict(fit, newdata = newdata)
+  
+  for (t in 2:h) 
+    {
+    newdata = newdata[1,-1]
+    newdata[h] = prev[t-1]
+    newdata = matrix(c(newdata, xreg[t]), 1)
+    prev[t] = predict(fit, newdata = newdata)
+    }
+  return(prev)
+}
+
+
 ## Root Mean Squared Error
 
-RMSE = function(y_act, y_prd)
-  #' Computes Root Mean Squared Error (RMSE) between actual and predicted values. 
+RMSE = function(y_act, y_prd, na.rm = FALSE)
+  #' @description Computes Root Mean Squared Error (RMSE) between actual and predicted values.
   #'
   #' @param y_act Numeric vector. Actual observed values.
   #' @param y_prd Numeric vector. Predicted values.
+  #' @param rm.na Bool.  Whether NA values should be stripped before the computation proceeds (Default = FALSE)
   #'
-  #' @return A single numeric value representing RMSE.
+  #' @return Float. Representing RMSE.
 {
-  return(sqrt(mean((y_act - y_prd)^2)))
+  return(sqrt(mean((y_act - y_prd)^2, na.rm = na.rm)))
 }
 ```
 
@@ -233,6 +266,8 @@ print(exec_t_end - exec_t_start)
 
 -   Some autocorrelation values are significant within the 1st period on ACF and PACF - \> try changing the order p and q ???
 
+### Cross-validation
+
 ```{r}
 # Code commented: very long computation 
 
@@ -284,6 +319,8 @@ print(exec_t_end - exec_t_start)
 # saveRDS(fit, file = "ARIMA_man_(5,0,0)(0,1,1)[96].rds")
 ```
 
+### Cross-validation
+
 ```{r}
 # Code commented: very long computation 
 
@@ -312,7 +349,10 @@ print(exec_t_end - exec_t_start)
 
 Cross-validation:
 
-`Time difference of 5.734455 hours [1] "Cross-validation RMSE: 12.5587524976877"`
+```         
+Time difference of 5.734455 hours 
+[1] "Cross-validation RMSE: 12.5587524976877"
+```
 
 ## NNetAR, Daily period
 
@@ -567,23 +607,28 @@ models_list$XGBoots_daily = readRDS('XGBoost_daily.rds')
 previsions_list = list()
 rmsep_list = list()
 horizon = 96
+freq = 96
 newdata_ML = tail(y_daily_train, horizon)
 
 for (name in names(models_list))
 {
   cat(paste0("Forcasting model:", name, "\n"))
         
-  if(grepl("RF", name) 
-     | grepl("XG", name)) # Use forecast_ML function with ML models 
+  if(grepl("RF", name) | grepl("XG", name)) # Use forecast_ML() with ML models 
   {
-    prevision = forecast_ML(models_list[[name]], newdata = matrix(newdata_ML,1), horizon)
-    prevision = ts(prevision, start = c(51,1), frequency = 96)
+    prevision = forecast_ML(models_list[[name]], 
+                            newdata = matrix(newdata_ML,1), 
+                            horizon)
+    prevision = ts(prevision, 
+                   start = start(y_daily_test), 
+                   frequency = freq)
   }
-  else # Use forecast function with ts models
+  else # Use forecast() with ts models
   {
     prevision = forecast(models_list[[name]], h = horizon)
     prevision = prevision$mean
   }
+  
   previsions_list[[name]] = prevision
   rmsep_list[[name]] = RMSE(y_daily_test,prevision)
   
@@ -614,23 +659,28 @@ models_list$XGBoots_weekly = readRDS('XGBoost_weeky.rds')
 previsions_list = list()
 rmsep_list = list()
 horizon = 96
+freq = 7 * 96
 newdata_ML = tail(y_weekly_train, 7*horizon)
 
 for (name in names(models_list))
 {
   cat(paste0("Forcasting model:", name, "\n"))
         
-  if(grepl("RF", name) 
-     | grepl("XG", name)) # Use forecast_ML function with ML models
+  if(grepl("RF", name) | grepl("XG", name)) # Use forecast_ML() with ML models
   {
-    prevision = forecast_ML(models_list[[name]], newdata = matrix(newdata_ML,1), horizon)
-    prevision = ts(prevision, start = c(8,97), frequency = 7*96)
+    prevision = forecast_ML(models_list[[name]], 
+                            newdata = matrix(newdata_ML,1), 
+                            horizon)
+    prevision = ts(prevision,
+                   start = start(y_weekly_test),
+                   frequency = freq)
   }
-  else # Use forecast function with ts models
+  else # Use forecast() with ts models
   {
     prevision = forecast(models_list[[name]], h = horizon)
     prevision = prevision$mean
   }
+  
   previsions_list[[name]] = prevision
   rmsep_list[[name]] = RMSE(y_weekly_test,prevision)
   
@@ -666,6 +716,35 @@ autoplot(y_weekly_test) +
 
 ## Retrain model on full Power time series and forecast unknown next 96 observations
 
+### SARIMA - Daily period
+
+```{r}
+# SARIMA, daily period
+exec_t_start = Sys.time()
+
+fit = Arima(y_daily,
+            order = c(5,0,0),
+            seasonal = c(0,1,0))
+fit |>  summary()
+
+ggtsdisplay(fit$residuals)
+checkresiduals(fit, plot = TRUE)
+
+exec_t_end = Sys.time()
+print(exec_t_end - exec_t_start)
+
+saveRDS(fit, file = "Final_model_without_covariate_SARIMA_daily.rds")
+```
+
+```{r}
+# forecast 96 next values
+horizon = 96
+
+prevision_SARIMA = forecast(readRDS("Final_model_without_covariate_SARIMA_daily.rds"), h= horizon)$mean
+```
+
+### Random Forest - Daily period
+
 ```{r}
 # next observation based on last day
 df_daily = as.vector(y_daily)[1:(96+1)]
@@ -698,17 +777,39 @@ saveRDS(fit, file = "Final_model_without_covariate_RF_daily.rds")
 horizon = 96
 newdata_ML = tail(y_daily, horizon)
 
-prevision = ts(forecast_ML(fit, newdata = matrix(newdata_ML,1), horizon), 
-               start = c(52,1), frequency = 96)
-
-df_results = data.frame(Forecast_no_covariate = prevision)
+prevision_RF = ts(
+  forecast_ML(readRDS("Final_model_without_covariate_RF_daily.rds"), 
+              newdata = matrix(newdata_ML,1), 
+              horizon), 
+  start = c(52,1), 
+  frequency = 96)
 ```
+
+### Forecast plots
 
 ```{r}
 # Plots
 autoplot(y_daily) +
-  autolayer(prevision) +
-  xlim(c(35,53))
+  autolayer(prevision_SARIMA) +
+  autolayer(prevision_RF)+
+  xlim(c(50,53))
+
+plot(as.vector(prevision_RF), as.vector(prevision_SARIMA))
+abline(lm(as.vector(prevision_SARIMA) ~ as.vector(prevision_RF)), col = "blue")
+abline(a = 0 , b = 1, col="red")
+```
+
+#### Notes:
+
+-   RF and SARIMA(5,0,0)(0,1,0)[96] forecast are comparable.
+
+-   RF provides a "smoother" forecast, while SARIMA seems better are predicting the short term variability of the time series.
+
+### Save forecast results
+
+```{r}
+df_results = data.frame(Forecast_no_covariate_SARIMA = prevision_SARIMA)
+df_results$Forecast_no_covariate_RF = prevision_RF
 ```
 
 # Modeling, with co-variates
@@ -783,56 +884,15 @@ autoplot(data_test[,1]) +
   autolayer(prevision)
 ```
 
-```{r}
-# saveRDS(fit, file = "ARIMA_X_auto_(5,0,0)(0,1,0)[96].rds")
-```
-
 #### Notes:
 
 -   ACF shows significant autocorrelation at 96 (= 1 day period) and PACF shows exponentially decreasing autocorrelation for daily periods -\> try adding seasonal MA (Q = 1)
 
-### Investigate linear modeling using `tslm()`
-
 ```{r}
-exec_t_start = Sys.time()
-
-fit = tslm(data_train[,1] ~ data_train[,2] + trend + season, data = data_train)
-fit |> summary()
-
-ggtsdisplay(fit$residuals)
-checkresiduals(fit, plot = TRUE)
-
-exec_t_end = Sys.time()
-print(exec_t_end - exec_t_start)
+# saveRDS(fit, file = "ARIMA_X_auto_(5,0,0)(0,1,0)[96].rds")
 ```
 
-### Fit manually ARIMA with covariate
-
-```{r}
-# Auto SARIMA, daily period
-exec_t_start = Sys.time()
-
-fit = Arima(data_train[,1], xreg = data_train[,-1], 
-            order = c(5,0,0), 
-            seasonal = c(0,1,1))
-fit |>  summary()
-
-ggtsdisplay(fit$residuals)
-checkresiduals(fit, plot = TRUE)
-
-exec_t_end = Sys.time()
-print(exec_t_end - exec_t_start)
-
-# Prediction on test set
-prevision = forecast(fit, h = 96, xreg = data_test[,2])$mean
-cat(paste0("Test RMSE: ", RMSE(data_test[,1], prevision)))
-autoplot(data_test[,1]) +
-  autolayer(prevision)
-```
-
-```{r}
-# saveRDS(fit, file = "ARIMA_X_auto_(5,0,0)(0,1,1)[96].rds")
-```
+#### Cross-validation
 
 ```{r}
 # Code commented: very long computation 
@@ -863,9 +923,255 @@ autoplot(data_test[,1]) +
 
 -   Cross validation:
 
-    `Arima_xreg <- function(x, h, xreg, newxreg) { forecast(Arima(x, order=c(5,0,0), seasonal = c(0,1,0), xreg=xreg), xreg=newxreg) }`\
-    `e <- tsCV(data_impute[,1], Arima_xreg, h=96, xreg=data_impute[,2], window = 4795)exec_t_end = Sys.time() print(exec_t_end - exec_t_start)print(paste0("Cross-validation RMSE: ", sqrt(mean(e^2, na.rm = TRUE))))`
+    ``` r
+    Arima_xreg <- function(x, h, xreg, newxreg) 
+      {
+      forecast(Arima(x, 
+                     order=c(5,0,0), 
+                     seasonal = c(0,1,0), 
+                     xreg=xreg), xreg=newxreg) 
+      }
 
--   Results:\
-    Time difference of 3.731499 hours\
+    e <- tsCV(data_impute[,1], Arima_xreg, h=96, xreg=data_impute[,2], window = 4795)
+
+    print(paste0("Cross-validation RMSE: ", sqrt(mean(e^2, na.rm = TRUE))))
+    ```
+
+-   Results:
+
+    ```         
+    Time difference of 3.731499 hours
     [1] "Cross-validation RMSE: 6.5453262433807"
+    ```
+
+### Investigate linear modeling using `tslm()`
+
+```{r}
+exec_t_start = Sys.time()
+
+fit = tslm(data_train[,1] ~ data_train[,2] + trend + season, data = data_train)
+fit |> summary()
+
+ggtsdisplay(fit$residuals)
+checkresiduals(fit, plot = TRUE)
+
+exec_t_end = Sys.time()
+print(exec_t_end - exec_t_start)
+```
+
+### Fit manually ARIMA with covariate
+
+```{r}
+# Auto SARIMA, daily period
+exec_t_start = Sys.time()
+
+fit = Arima(data_train[,1], 
+            xreg = data_train[,-1], 
+            order = c(5,0,0), 
+            seasonal = c(0,1,1))
+fit |>  summary()
+
+ggtsdisplay(fit$residuals)
+checkresiduals(fit, plot = TRUE)
+
+exec_t_end = Sys.time()
+print(exec_t_end - exec_t_start)
+
+# Prediction on test set
+prevision = forecast(fit, h = 96, xreg = data_test[,2])$mean
+cat(paste0("Test RMSE: ", RMSE(data_test[,1], prevision)))
+autoplot(data_test[,1]) +
+  autolayer(prevision)
+```
+
+```{r}
+# saveRDS(fit, file = "ARIMA_X_auto_(5,0,0)(0,1,1)[96].rds")
+```
+
+## ML modeling
+
+### ML Data prep
+
+```{r}
+# next observation based on last day
+df_daily_covariate = as.vector(data_train[1:(96+1),])
+for (i in 1:(dim(data_train)[1]-(96+1)))
+{
+  df_daily_covariate = rbind(df_daily_covariate, 
+                             as.vector(data_train[(i+1):(i+96+1),]))
+}
+```
+
+### Random Forest
+
+```{r}
+exec_t_start = Sys.time()
+
+fit = randomForest(x = df_daily_covariate[,-(96+1)], 
+                   y = df_daily_covariate[,(96+1)])
+fit |>  summary()
+
+e = ts(fit$y - fit$predicted, start = c(1,6), frequency = 96)
+print(paste0("Train RMSE: ", sqrt(mean(e^2, na.rm = TRUE))))
+ggtsdisplay(e)
+checkresiduals(e, plot = TRUE)
+
+exec_t_end = Sys.time()
+print(exec_t_end - exec_t_start)
+```
+
+```{r}
+# saveRDS(fit, file = "RF_X_daily.rds")
+```
+
+## Model performance comparison
+
+```{r}
+# Build a list of models
+models_list = list()
+models_list$SARIMAX_500_010_96 = readRDS('ARIMA_X_auto_(5,0,0)(0,1,0)[96].rds')
+models_list$SARIMAX_500_011_96 = readRDS('ARIMA_X_auto_(5,0,0)(0,1,1)[96].rds')
+models_list$RF_daily = readRDS('RF_X_daily.rds')
+
+# Make predictions with each model and store RMSE
+previsions_list = list()
+rmsep_list = list()
+horizon = 96
+freq = 96
+newdata_ML = c(as.vector(tail(data_train, 96)))
+xreg = as.vector(data_test[,2])
+
+for (name in names(models_list))
+{
+  cat(paste0("Forcasting model:", name, "\n"))
+        
+  if(grepl("RF", name) | grepl("XG", name)) # Use forecast_ML_X() with ML models 
+  {
+    prevision = forecast_ML_X(models_list[[name]], 
+                              newdata = matrix(newdata_ML,1), 
+                              horizon,
+                              xreg = xreg)
+    prevision = ts(prevision, 
+                   start = start(data_test), 
+                   frequency = freq)
+  }
+  else # Use forecast() with ts models
+  {
+    prevision = forecast(models_list[[name]], h = horizon, xreg = xreg)
+    prevision = prevision$mean
+  }
+  
+  previsions_list[[name]] = prevision
+  rmsep_list[[name]] = RMSE(y_daily_test,prevision)
+  
+  cat(paste0("Test set RMSE: ", rmsep_list[[name]], "\n\n"))
+}
+
+# Plots
+autoplot(y_daily_test) +
+  autolayer(previsions_list$SARIMAX_500_010_96) +
+  autolayer(previsions_list$SARIMAX_500_011_96) +
+  autolayer(previsions_list$RF_daily)
+```
+
+## Retrain model on full Power time series and forecast unknown next 96 observations, using Temperature as covariate
+
+### SARIMA - Daily period
+
+```{r}
+# SARIMA, daily period
+exec_t_start = Sys.time()
+
+fit = Arima(head(data_impute, dim(data_impute)[1]-96)[,1], 
+            xreg = head(data_impute, dim(data_impute)[1]-96)[,-1], 
+            order = c(5,0,0), 
+            seasonal = c(0,1,0))
+fit |>  summary()
+
+ggtsdisplay(fit$residuals)
+checkresiduals(fit, plot = TRUE)
+
+exec_t_end = Sys.time()
+print(exec_t_end - exec_t_start)
+
+saveRDS(fit, file = "Final_model_with_covariate_SARIMA_daily.rds")
+```
+
+```{r}
+# forecast 96 next values
+horizon = 96
+
+prevision_SARIMA_X = forecast(readRDS("Final_model_with_covariate_SARIMA_daily.rds"), h= horizon, xreg = data_forecast[,-1])$mean
+```
+
+### Random Forest - Daily period
+
+```{r}
+# next observation based on last day
+df_daily_covariate = as.vector(data_impute[1:(96+1),])
+
+for (i in 1:(dim(data_impute)[1]-(96+1+96)))
+{
+  df_daily_covariate = rbind(df_daily_covariate, 
+                             as.vector(data_impute[(i+1):(i+96+1),]))
+}
+```
+
+```{r}
+exec_t_start = Sys.time()
+
+fit = randomForest(x = df_daily_covariate[,-(96+1)], 
+                   y = df_daily_covariate[,(96+1)])
+fit |>  summary()
+
+e = ts(fit$y - fit$predicted, start = c(1,6), frequency = 96)
+print(paste0("Train RMSE: ", sqrt(mean(e^2, na.rm = TRUE))))
+ggtsdisplay(e)
+checkresiduals(e, plot = TRUE)
+
+exec_t_end = Sys.time()
+print(exec_t_end - exec_t_start)
+
+saveRDS(fit, file = "Final_model_with_covariate_RF_daily.rds")
+```
+
+```{r}
+# forecast 96 next values
+horizon = 96
+freq = 96
+newdata_ML = c(as.vector(window(data_impute, start = c(51,1), end = c(51,96))))
+xreg = as.vector(data_forecast[,2])
+
+prevision_RF_X = ts(
+  forecast_ML_X(readRDS("Final_model_with_covariate_RF_daily.rds"), 
+              newdata = matrix(newdata_ML,1), 
+              horizon,
+              xreg), 
+  start = c(52,1), 
+  frequency = freq)
+```
+
+### Plots
+
+```{r}
+# Plots
+autoplot(data_impute[,1]) +
+  autolayer(prevision_SARIMA_X) +
+  autolayer(prevision_RF_X) +
+  autolayer(prevision_SARIMA) + 
+  autolayer(prevision_RF) +
+  xlim(c(50,53))
+```
+
+### Save forecast results
+
+```{r}
+df_results$Forecast_covariate_SARIMA = prevision_SARIMA_X
+df_results$Forecast_covariate_RF = prevision_RF_X
+```
+
+# Export forecast results
+
+```{r}
+write_xlsx(df_results, "SamdGuizani.xlsx", col_names = FALSE)
+```
