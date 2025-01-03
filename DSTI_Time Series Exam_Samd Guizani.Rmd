@@ -24,7 +24,7 @@ output:
 # Working directory and imports
 
 ```{r}
-setwd("~/DSTI_MSc DS and AI/03-Advanced/03-Time Series/Course_R scripts")
+setwd("~/DSTI_MSc DS and AI/03-Advanced/03-Time Series/Exam")
 
 library(readxl)
 library(forecast)
@@ -44,7 +44,7 @@ library(writexl)
 ## Forecast Time Series Using a Machine Learning Model
 
 forecast_ML = function(fit, newdata, h) 
-  #' @description Generates a time series forecast using a machine learning model (e.g., random forest or XGBoost). Iteratively predicts future values based on previous predictions and updates the input data matrix accordingly.
+  #' @description Time series forecast using a machine learning model (e.g., random forest or XGBoost). Iteratively predicts future values based on previous predictions and updates the input data matrix accordingly.
   #' 
   #' @param fit A trained machine learning model (e.g., random forest, XGBoost) with a `predict` method.
   #' 
@@ -66,7 +66,7 @@ forecast_ML = function(fit, newdata, h)
 ## Forecast Time Series Using a Machine Learning Model and covariates
 
 forecast_ML_X = function(fit, newdata, h, xreg) 
-  #' @description Generates a time series forecast using a machine learning model (e.g., random forest or XGBoost). Iteratively predicts future values based on previous predictions and measured covariates and updates the input data matrix accordingly.
+  #' @description Time series forecast using a machine learning model (e.g., random forest or XGBoost). Iteratively predicts future values based on previous predictions and measured covariates and updates the input data matrix accordingly.
   #' 
   #' @param fit A trained machine learning model (e.g., random forest, XGBoost) with a `predict` method.
   #' 
@@ -262,9 +262,7 @@ print(exec_t_end - exec_t_start)
 
 -   ACF shows significant autocorrelation at 96 (= 1 day period) and PACF shows exponentially decreasing autocorrelation for daily periods -\> try adding seasonal MA (Q = 1)
 
--   A trend may still exist -\> try differentiating (d = 1) ???
-
--   Some autocorrelation values are significant within the 1st period on ACF and PACF - \> try changing the order p and q ???
+-   Some autocorrelation values are significant within the 1st period on ACF and PACF - \> try changing the order p and q
 
 ### Cross-validation
 
@@ -809,7 +807,7 @@ abline(a = 0 , b = 1, col="red")
 
 ```{r}
 df_results = data.frame(Forecast_no_covariate_SARIMA = prevision_SARIMA)
-df_results$Forecast_no_covariate_RF = prevision_RF
+# df_results$Forecast_no_covariate_RF = prevision_RF
 ```
 
 # Modeling, with co-variates
@@ -962,7 +960,7 @@ print(exec_t_end - exec_t_start)
 ### Fit manually ARIMA with covariate
 
 ```{r}
-# Auto SARIMA, daily period
+# SARIMA, daily period
 exec_t_start = Sys.time()
 
 fit = Arima(data_train[,1], 
@@ -1029,9 +1027,9 @@ print(exec_t_end - exec_t_start)
 ```{r}
 # Build a list of models
 models_list = list()
-models_list$SARIMAX_500_010_96 = readRDS('ARIMA_X_auto_(5,0,0)(0,1,0)[96].rds')
-models_list$SARIMAX_500_011_96 = readRDS('ARIMA_X_auto_(5,0,0)(0,1,1)[96].rds')
-models_list$RF_daily = readRDS('RF_X_daily.rds')
+models_list$SARIMA_X_500_010_96 = readRDS('ARIMA_X_auto_(5,0,0)(0,1,0)[96].rds')
+models_list$SARIMA_X_500_011_96 = readRDS('ARIMA_X_auto_(5,0,0)(0,1,1)[96].rds')
+models_list$RF_X_daily = readRDS('RF_X_daily.rds')
 
 # Make predictions with each model and store RMSE
 previsions_list = list()
@@ -1069,9 +1067,9 @@ for (name in names(models_list))
 
 # Plots
 autoplot(y_daily_test) +
-  autolayer(previsions_list$SARIMAX_500_010_96) +
-  autolayer(previsions_list$SARIMAX_500_011_96) +
-  autolayer(previsions_list$RF_daily)
+  autolayer(previsions_list$SARIMA_X_500_010_96) +
+  autolayer(previsions_list$SARIMA_X_500_011_96) +
+  autolayer(previsions_list$RF_X_daily)
 ```
 
 ## Retrain model on full Power time series and forecast unknown next 96 observations, using Temperature as covariate
@@ -1167,7 +1165,7 @@ autoplot(data_impute[,1]) +
 
 ```{r}
 df_results$Forecast_covariate_SARIMA = prevision_SARIMA_X
-df_results$Forecast_covariate_RF = prevision_RF_X
+# df_results$Forecast_covariate_RF = prevision_RF_X
 ```
 
 # Export forecast results
