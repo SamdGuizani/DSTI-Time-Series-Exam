@@ -1,16 +1,49 @@
-The file 2023-11-Elec-train.xlsx contains electricity consumption (kW) and outdoor air temperature for a building. These quantities are measured every 15 minutes, from 1/1/2010 1:15 to 2/20/2010 23:45. In addition, outdoor air temperature is available for 2/21/2010. The goal is to forecast electricity consumption (kW) for 2/21/2010.
+# DSTI Exam - Time Series
 
-Two forecasts should be returned, in one Excel file entitled YourName.xlsx, with exactly two columns (one columns per forecast) and 96 rows:
+### Summary of the Examination Exercise
 
-1. the first one without using outdoor temperature,
-2. the second one using outdoor temperature.
+#### Objective:
 
-Of course, the goal is to get the best possible forecast. So you have to test all the models we saw during the course, to tune them and compare them correctly. In addition to your forecast, you should also return a short reports (few pages), entitled YourName.pdf, explaining how you have proceeded and containing the R codes you used.
+- **Task**: Using historical Time Series data, forecast electricity consumption for February 21, 2010, with two approaches:
+  1. Without using outdoor temperature.
+  2. Using outdoor temperature as a covariate.
 
-The grading will take into account:
+- **Data**: Electricity consumption and outdoor temperature recorded every 15 minutes from January 1, 2010, to February 20, 2010. Outdoor temperature data is available up to February 21, 2010.
 
-* the quality of your methodology (50%)
-* the quality of your forecast (30%)
-* the quality of your report and the respect of the exam instructions (20%)
+- **Deliverables**:
+  - An Excel file with two columns of 96 rows each, containing the forecasts.
+  - A short report explaining the methodology, including R codes used.
 
-A bonus grading of 15% can be obtained if you manage to obtained coherent results using a Deep Neural Network in R (coherent means comparable to what you obtained with other models). To obtain this bonus, a separate YourName.Rmd file should be submitted.
+### Main Results from the Report
+
+#### Methodology:
+
+- **Data Preparation**:
+  - Data was split into training (January 1 to February 19) and testing (February 20) sets.
+  - Missing or unusual data points were interpolated.
+
+- **Models Tested**:
+  - SARIMA, NNetAR, Random Forest, XGBoost, and Partial Least Squares (PLS) regression.
+  - Models were evaluated with and without outdoor temperature as a covariate.
+  - Both daily (96 values/day) and weekly (672 values/week) seasonality were considered.
+
+#### Key Findings:
+
+- **Best Model Without Covariate**:
+  - ARIMA(5,0,0)(0,1,0)[96] achieved the lowest testing RMSE of 5.9.
+  - Random Forest also performed well but showed overfitting issues with XGBoost.
+
+- **Best Model With Covariate**:
+  - ARIMA(5,0,0)(0,1,0)[96] with outdoor temperature achieved the same RMSE of 5.9.
+  - Including outdoor temperature did not significantly improve forecast accuracy.
+
+- **Weekly Seasonality Models**:
+  - Generally performed worse than daily models, indicating overfitting.
+
+- **Residual Analysis**:
+  - Residuals did not consistently exhibit white noise properties, suggesting room for model improvement.
+
+#### Conclusion:
+- ARIMA(5,0,0)(0,1,0)[96] was the best-performing model overall.
+- Forecasts aligned well with observed patterns, but residual analysis indicated potential for further refinement.
+- Outdoor temperature had limited impact on improving forecast accuracy.
